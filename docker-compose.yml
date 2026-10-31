@@ -1,0 +1,21 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: doctoros_db
+    environment:
+      POSTGRES_USER: doctoros
+      POSTGRES_PASSWORD: doctoros_password
+      POSTGRES_DB: doctoros
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: doctoros_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
