@@ -33,6 +33,12 @@ class Document(Base, TimestampMixin):
     ocr_status: Mapped[str] = mapped_column(
         String(30), default="pending", nullable=False
     )
+    extraction_status: Mapped[str] = mapped_column(
+    String(30),
+    default="pending",
+    server_default="pending",
+    nullable=False,
+)
 
     raw_text: Mapped[str | None] = mapped_column(Text)
 

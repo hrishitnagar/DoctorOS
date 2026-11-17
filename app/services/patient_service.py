@@ -1,9 +1,11 @@
 
+
 from datetime import date
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+
 from app.models.patient import Patient
 from app.schemas.patient import PatientCreate
 
@@ -12,10 +14,40 @@ def create_patient(db: Session, patient_data: PatientCreate) -> Patient:
     """
     Create a patient and generate a unique patient UID.
 
-    Format:
-    DOS-YYYY-000001
+    Format: DOS-YYYY-000001
     """
-    
+
+    current_year = date.today().year
+
+    # Temporary unique UID before the database generates the patient ID.
+    temporary_uid = f"T-{uuid4().hex[:20]}"
+
+    patient = Patient(
+        **patient_data.model_dump(),
+        patient_uid=temporary_uid,
+    )
+
+    try:
+        db.add(patient)
+
+        # Insert the patient and generate its database ID.
+        db.flush()
+
+        # Generate the permanent patient UID using the database ID.
+        patient.patient_uid = (
+            f"DOS-{current_year}-{patient.id:06d}"
+        )
+
+        db.commit()
+        db.refresh(patient)
+
+        return patient
+
+    except Exception:
+        db.rollback()
+        raise
+
+
 def get_patients(
     db: Session,
     search: str | None = None,
@@ -46,34 +78,3 @@ def get_patients(
     )
 
     return patients, total
-
-
-    current_year = date.today().year
-
-    # A temporary unique value lets PostgreSQL assign the patient ID.
-    temporary_uid = f"T-{uuid4().hex[:20]}"
-
-    patient = Patient(
-        **patient_data.model_dump(),
-        patient_uid=temporary_uid,
-    )
-
-    try:
-        db.add(patient)
-
-        # Insert the patient and obtain its database-generated ID.
-        db.flush()
-
-        # Use the unique database ID to generate the permanent patient UID.
-        patient.patient_uid = (
-            f"DOS-{current_year}-{patient.id:06d}"
-        )
-
-        db.commit()
-        db.refresh(patient)
-
-        return patient
-
-    except Exception:
-        db.rollback()
-        raise

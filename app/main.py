@@ -7,6 +7,8 @@ from app.api.deps import require_role
 from app.models.user import User
 from app.api.routes.appointments import router as appointments_router
 from app.api.routes import visits
+from app.api.routes import documents
+from app.api.routes import review
 
 # 1. Create the FastAPI application FIRST
 app = FastAPI(
@@ -53,6 +55,8 @@ app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(appointments_router)
 app.include_router(visits.router)
+app.include_router(documents.router)
+app.include_router(review.router)
 
 
 # 4. Protected doctor dashboard
