@@ -9,22 +9,23 @@ from app.models.document import Document
 from app.models.lab_result import LabResult
 
 
-def _timeline_sort_key(value: datetime | date) -> datetime:
-    """
-    Convert timeline dates to UTC-aware datetimes for consistent sorting.
-    Lab results use a date, so they are placed at midnight UTC.
-    """
-    if isinstance(value, datetime):
-        if value.tzinfo is None or value.utcoffset() is None:
-            value = value.replace(tzinfo=timezone.utc)
+def _timeline_sort_key(value):
+    if value is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
 
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
 
-    return datetime.combine(
-        value,
-        time.min,
-        tzinfo=timezone.utc,
-    )
+    if isinstance(value, date):
+        return datetime.combine(
+            value,
+            time.min,
+            tzinfo=timezone.utc,
+        )
+
+    return datetime.min.replace(tzinfo=timezone.utc)
 
 
 def get_patient_timeline(

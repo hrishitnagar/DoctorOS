@@ -2,12 +2,17 @@
 
 from datetime import date
 from uuid import uuid4
+from sqlalchemy.orm import Session
 
+from app.models.conversation import Conversation
+from app.models.conversation_message import ConversationMessage
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.models.patient import Patient
 from app.schemas.patient import PatientCreate
+class ConversationError(Exception):
+    """Raised when conversation processing fails."""
 
 
 def create_patient(db: Session, patient_data: PatientCreate) -> Patient:
@@ -78,3 +83,62 @@ def get_patients(
     )
 
     return patients, total
+
+def get_patient_conversations(
+    db: Session,
+    patient_id: int,
+    doctor_id: int,
+    skip: int = 0,
+    limit: int = 20,
+) -> tuple[list[Conversation], int]:
+    """
+    Return conversations belonging to a specific doctor and patient.
+    Supports pagination.
+    """
+
+    query = db.query(Conversation).filter(
+        Conversation.patient_id == patient_id,
+        Conversation.doctor_id == doctor_id,
+    )
+
+    total = query.count()
+
+    conversations = (
+        query
+        .order_by(Conversation.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    return conversations, total
+
+
+def get_conversation_detail(
+    db: Session,
+    patient_id: int,
+    doctor_id: int,
+    conversation_id: int,
+) -> Conversation:
+    """
+    Return one conversation with its messages.
+    Only the owning doctor can access it.
+    """
+
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.patient_id == patient_id,
+            Conversation.doctor_id == doctor_id,
+        )
+        .first()
+    )
+
+    if not conversation:
+        raise ConversationError(
+            "Conversation not found or access denied."
+        )
+
+    return conversation
+

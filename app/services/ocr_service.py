@@ -1,6 +1,7 @@
 
 
 
+
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -14,68 +15,60 @@ from app.services.image_preprocessing import preprocess_image
 
 
 # Explicit Windows path to Tesseract.
-# This is needed because Tesseract is not currently in your PATH.
 pytesseract.pytesseract.tesseract_cmd = (
     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 )
 
 
-def extract_text_from_pdf(file_path: str) -> str:
+def extract_pages_from_pdf(file_path: str) -> list[tuple[int, str]]:
     """
-    Extract embedded PDF text using PyMuPDF.
+    Extract text page by page.
 
-    If a page has no embedded text, render it as an image,
-    preprocess it, and run Tesseract OCR.
+    Uses embedded PDF text first. If a page has no embedded
+    text, renders that page and runs Tesseract OCR.
+
+    Returns:
+        [(1, "page one text"), (2, "page two text"), ...]
     """
     extracted_pages = []
 
     with fitz.open(file_path) as pdf:
-        for page in pdf:
+        for page_number, page in enumerate(pdf, start=1):
 
-            # 1. Try extracting embedded text first.
             page_text = page.get_text("text").strip()
 
-            if page_text:
-                extracted_pages.append(page_text)
-                continue
+            if not page_text:
+                pix = page.get_pixmap(
+                    matrix=fitz.Matrix(2, 2),
+                    alpha=False,
+                )
 
-            # 2. Render scanned PDF page as an image.
-            pix = page.get_pixmap(
-                matrix=fitz.Matrix(2, 2),
-                alpha=False,
-            )
+                image = Image.frombytes(
+                    "RGB",
+                    [pix.width, pix.height],
+                    pix.samples,
+                )
 
-            image = Image.frombytes(
-                "RGB",
-                [pix.width, pix.height],
-                pix.samples,
-            )
+                image_array = np.array(image)
+                processed_image = preprocess_image(image_array)
 
-            # 3. Convert image to NumPy array.
-            image_array = np.array(image)
+                page_text = pytesseract.image_to_string(
+                    processed_image
+                ).strip()
 
-            # 4. Preprocess scanned page.
-            processed_image = preprocess_image(image_array)
+            extracted_pages.append((page_number, page_text))
 
-            # 5. Run Tesseract OCR.
-            page_text = pytesseract.image_to_string(
-                processed_image
-            ).strip()
-
-            extracted_pages.append(page_text)
-
-    return "\n\n".join(extracted_pages).strip()
+    return extracted_pages
 
 
-def extract_text_from_file(file_path: str) -> str:
+def extract_pages_from_file(
+    file_path: str,
+) -> list[tuple[int, str]]:
     """
-    Extract text from supported PDF and image files.
+    Extract page-aware text from supported files.
 
-    Supported:
-    - PDF
-    - PNG
-    - JPG
-    - JPEG
+    PDF pages retain their original page numbers.
+    Image files are treated as page 1.
     """
     path = Path(file_path)
 
@@ -86,34 +79,50 @@ def extract_text_from_file(file_path: str) -> str:
 
     suffix = path.suffix.lower()
 
-    # PDF processing
     if suffix == ".pdf":
-        return extract_text_from_pdf(str(path))
+        return extract_pages_from_pdf(str(path))
 
-    # Image processing
     if suffix in {".png", ".jpg", ".jpeg"}:
 
         with Image.open(path) as image:
-
-            # Convert image to RGB.
             image = image.convert("RGB")
 
-            # Convert PIL image to NumPy array.
             image_array = np.array(image)
-
-            # Apply preprocessing.
             processed_image = preprocess_image(image_array)
 
-            # Run OCR on preprocessed image.
             extracted_text = pytesseract.image_to_string(
                 processed_image
             ).strip()
 
-            return extracted_text
+            return [(1, extracted_text)]
 
     raise ValueError(
         f"Unsupported file type: {suffix}"
     )
+
+
+def extract_text_from_pdf(file_path: str) -> str:
+    """
+    Backward-compatible PDF extraction function.
+
+    Keeps page boundaries using form-feed separators.
+    """
+    pages = extract_pages_from_pdf(file_path)
+
+    return "\n\f\n".join(
+        text for _, text in pages
+    ).strip()
+
+
+def extract_text_from_file(file_path: str) -> str:
+    """
+    Backward-compatible text extraction function.
+    """
+    pages = extract_pages_from_file(file_path)
+
+    return "\n\f\n".join(
+        text for _, text in pages
+    ).strip()
 
 
 def process_document_ocr(
@@ -121,45 +130,54 @@ def process_document_ocr(
     document: Document,
 ) -> Document:
     """
-    Process a document using OCR.
+    Process a document using page-aware OCR.
 
     Updates:
     - Document.raw_text
     - Document.ocr_status
+
+    Page boundaries are retained using form-feed separators.
     """
     try:
-        # Mark document as processing.
         document.ocr_status = "processing"
         db.commit()
 
-        # Extract text from the document.
-        extracted_text = extract_text_from_file(
+        pages = extract_pages_from_file(
             document.file_path
         )
 
-        # Update document fields.
+        extracted_text = "\n\f\n".join(
+            page_text for _, page_text in pages
+        ).strip()
+
         if extracted_text:
             document.raw_text = extracted_text
             document.ocr_status = "done"
-
         else:
             document.raw_text = None
             document.ocr_status = "failed"
 
-        # Persist changes.
         db.commit()
         db.refresh(document)
 
         return document
 
     except Exception:
-        # Roll back any incomplete transaction.
         db.rollback()
 
-        # Mark OCR as failed.
-        document.ocr_status = "failed"
-        db.commit()
-        db.refresh(document)
+        try:
+            failed_document = (
+                db.query(Document)
+                .filter(Document.id == document.id)
+                .first()
+            )
 
-        # Let the API endpoint handle the exception.
+            if failed_document is not None:
+                failed_document.ocr_status = "failed"
+                db.commit()
+
+        except Exception:
+            db.rollback()
+
         raise
+

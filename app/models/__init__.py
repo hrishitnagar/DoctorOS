@@ -11,6 +11,9 @@ from app.models.extracted_entity import ExtractedEntity
 from app.models.lab_result import LabResult
 from app.models.document_chunk import DocumentChunk
 from app.models.audit_log import AuditLog
+from app.models.conversation import Conversation
+from app.models.conversation_message import ConversationMessage
+from app.models.patient_summary import PatientSummary
 
 __all__ = [
     "User",
@@ -25,4 +28,7 @@ __all__ = [
     "LabResult",
     "DocumentChunk",
     "AuditLog",
+    "Conversation",
+    "ConversationMessage",
+    "PatientSummary"
 ]

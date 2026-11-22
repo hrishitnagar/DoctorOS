@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.database.connection import get_db
 from app.models.user import User
+from app.models.patient import Patient
+from app.models.appointment import Appointment
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -65,3 +67,47 @@ def require_role(required_role: str):
         return current_user
 
     return role_checker
+
+
+def get_authorized_patient(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("doctor"))
+) -> Patient:
+    """
+    Verify that the authenticated doctor has an eligible
+    appointment with the requested patient.
+
+    Scheduled and completed appointments grant access.
+    Cancelled and no-show appointments do not.
+    """
+
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == patient_id)
+        .first()
+    )
+
+    if patient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found"
+        )
+
+    authorized_appointment = (
+        db.query(Appointment)
+        .filter(
+            Appointment.patient_id == patient_id,
+            Appointment.doctor_id == current_user.id,
+            Appointment.status.in_(["scheduled", "completed"])
+        )
+        .first()
+    )
+
+    if authorized_appointment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to access this patient's records"
+        )
+
+    return patient

@@ -9,6 +9,8 @@ from app.database.connection import SessionLocal
 from app.models.document import Document
 
 from app.services.ocr_service import process_document_ocr
+from app.services.chunking_service import create_document_chunks
+
 from app.services.medical_extraction_service import (
     extract_and_validate_medical_data,
 )
@@ -28,13 +30,21 @@ def process_document_pipeline(
     Complete document processing pipeline:
 
     1. Extract text using OCR.
-    2. Extract structured medical information.
-    3. Validate extracted information.
-    4. Persist validated information.
-    5. Update document processing status.
+    2. Generate page-aware RAG chunks.
+    3. Extract structured medical information.
+    4. Validate extracted information.
+    5. Persist validated information.
+    6. Update document processing status.
+
+    Chunking failure does not stop medical extraction.
     """
 
     document_id = document.id
+    chunking_result = {
+        "success": False,
+        "chunks_created": 0,
+        "message": "Chunking not attempted.",
+    }
 
     try:
         # STEP 1: OCR processing
@@ -55,6 +65,7 @@ def process_document_pipeline(
                 "document_id": document.id,
                 "ocr_status": document.ocr_status,
                 "extraction_status": document.extraction_status,
+                "chunking": chunking_result,
                 "message": "No OCR text available. Medical extraction skipped.",
             }
 
@@ -63,11 +74,57 @@ def process_document_pipeline(
             document.id,
         )
 
-        # STEP 2: Mark extraction as processing
+        # STEP 2: Generate and persist RAG chunks
+        try:
+            chunks_created = create_document_chunks(
+                db=db,
+                document=document,
+            )
+
+            chunking_result = {
+                "success": True,
+                "chunks_created": chunks_created,
+                "message": "Document chunks created successfully.",
+            }
+
+            logger.info(
+                "Chunking completed for document_id=%s, chunks=%s",
+                document.id,
+                chunks_created,
+            )
+
+        except Exception as chunking_error:
+            db.rollback()
+
+            chunking_result = {
+                "success": False,
+                "chunks_created": 0,
+                "message": str(chunking_error),
+            }
+
+            logger.exception(
+                "Chunking failed for document_id=%s. "
+                "Continuing medical extraction.",
+                document_id,
+            )
+
+        # Reload document after chunking transaction.
+        document = (
+            db.query(Document)
+            .filter(Document.id == document_id)
+            .first()
+        )
+
+        if document is None:
+            raise ValueError(
+                f"Document {document_id} was not found after chunking."
+            )
+
+        # STEP 3: Mark extraction as processing
         document.extraction_status = "processing"
         db.commit()
 
-        # STEP 3: Extract and validate medical information
+        # STEP 4: Extract and validate medical information
         extraction = extract_and_validate_medical_data(
             document.raw_text
         )
@@ -77,7 +134,7 @@ def process_document_pipeline(
             document.id,
         )
 
-        # STEP 4: Persist extracted information
+        # STEP 5: Persist extracted information
         persistence_result = persist_medical_extraction(
             db=db,
             document_id=document.id,
@@ -85,7 +142,7 @@ def process_document_pipeline(
             extraction=extraction,
         )
 
-        # STEP 5: Mark extraction as completed
+        # STEP 6: Mark extraction as completed
         document = (
             db.query(Document)
             .filter(Document.id == document_id)
@@ -111,6 +168,7 @@ def process_document_pipeline(
             "document_id": document.id,
             "ocr_status": document.ocr_status,
             "extraction_status": document.extraction_status,
+            "chunking": chunking_result,
             "extraction": extraction.model_dump(),
             "persistence": persistence_result,
             "message": "Document processing pipeline completed successfully.",
@@ -175,14 +233,16 @@ def run_ocr_background(document_id: int) -> None:
         )
 
         persistence = result.get("persistence", {})
+        chunking = result.get("chunking", {})
 
         logger.info(
             "Background processing finished. "
             "document_id=%s success=%s extraction_status=%s "
-            "entities_saved=%s lab_results_saved=%s",
+            "chunks_created=%s entities_saved=%s lab_results_saved=%s",
             document_id,
             result.get("success"),
             result.get("extraction_status"),
+            chunking.get("chunks_created", 0),
             persistence.get("entities_saved", 0),
             persistence.get("lab_results_saved", 0),
         )
@@ -195,3 +255,4 @@ def run_ocr_background(document_id: int) -> None:
 
     finally:
         db.close()
+
