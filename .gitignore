@@ -22,3 +22,4 @@ uploads/
 
 # Testing
 .pytest_cache/ 
+requirements.local-backup.txt

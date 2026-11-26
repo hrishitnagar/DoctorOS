@@ -15,8 +15,14 @@ from app.services.image_preprocessing import preprocess_image
 
 
 # Explicit Windows path to Tesseract.
-pytesseract.pytesseract.tesseract_cmd = (
+import os
+
+# Use the configured Tesseract executable, or the platform default.
+pytesseract.pytesseract.tesseract_cmd = os.getenv(
+    "TESSERACT_CMD",
     r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if os.name == "nt"
+    else "/usr/bin/tesseract"
 )
 
 
