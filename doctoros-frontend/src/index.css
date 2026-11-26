@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { font-size: 15px; -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    @apply font-sans text-slate-900 antialiased min-h-screen;
+    background:
+      radial-gradient(1100px 520px at 8% -8%, rgba(255,255,255,.65), transparent 60%),
+      radial-gradient(900px 480px at 100% 0%, rgba(111,161,155,.22), transparent 60%),
+      radial-gradient(800px 500px at 50% 110%, rgba(197,138,30,.14), transparent 60%),
+      #F3E8CC;
+    background-attachment: fixed;
+    overscroll-behavior-y: none;
+  }
+  /* subtle paper grain (inline SVG, no extra request) */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .5;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35  0 0 0 0 .25  0 0 0 0 .12  0 0 0 .22 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  h1, h2, h3 { @apply font-display tracking-tight; }
+  :focus-visible { @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-paper-100; }
+  ::selection { background: #EBCF82; color: #16110D; }
+  img { -webkit-user-drag: none; }
+}
+
+@layer components {
+  .md-body { @apply text-sm leading-7 text-slate-800; }
+  .md-body p { @apply my-2; }
+  .md-body h1, .md-body h2, .md-body h3 { @apply font-bold text-slate-900 mt-4 mb-2; }
+  .md-body h1 { @apply text-xl; } .md-body h2 { @apply text-lg; } .md-body h3 { @apply text-base; }
+  .md-body ul { @apply list-disc pl-5 my-2 space-y-1; }
+  .md-body ol { @apply list-decimal pl-5 my-2 space-y-1; }
+  .md-body table { @apply w-full text-left border-collapse my-3; }
+  .md-body th, .md-body td { @apply border border-slate-200 px-2 py-1; }
+  .md-body th { @apply bg-slate-100; }
+  .md-body code { @apply font-mono bg-slate-100 rounded px-1; }
+  .md-body strong { @apply font-semibold; }
+
+  /* ---- 3D helpers ---- */
+  .persp { perspective: 1100px; }
+  .preserve-3d { transform-style: preserve-3d; }
+  .tilt { transform-style: preserve-3d; transition: transform .18s ease-out, box-shadow .3s; will-change: transform; position: relative; }
+  .tilt::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .25s;
+    background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,.38), transparent 55%);
+  }
+  .tilt.is-active::after { opacity: 1; }
+  .tilt.is-active { box-shadow: 0 34px 50px -26px rgba(22,17,13,.55); }
+  .ring3d { transform-style: preserve-3d; }
+  .ring3d-card { position: absolute; inset: 0; transform: rotateY(calc(var(--i) * 90deg)) translateZ(var(--r)); backface-visibility: visible; }
+  .plate { background: #FFFBF1; padding: 6px; border-radius: 6px; box-shadow: 0 18px 30px -14px rgba(22,17,13,.7), 0 0 0 1px rgba(22,17,13,.35); }
+  .sepia-print { filter: sepia(.35) contrast(1.05); }
+  .caduceus {
+    background-color: currentColor;
+    -webkit-mask: url('/images/caduceus.svg') center / contain no-repeat;
+    mask: url('/images/caduceus.svg') center / contain no-repeat;
+    aspect-ratio: 960 / 1164;
+  }
+  .scroll-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: #CFC1A3; border-radius: 99px; }
+  .safe-b { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Motion: keep it light on phones and respect user settings */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+@media (hover: none) { .tilt { transition: none; } }
